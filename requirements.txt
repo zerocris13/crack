@@ -1,6 +1,8 @@
 streamlit>=1.36
-torch
-torchvision
+torch>=2.3
+torchvision>=0.18
+timm==0.6.13
+einops>=0.6
 numpy
 Pillow
 opencv-python-headless
