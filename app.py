@@ -9,32 +9,56 @@ import urllib.request
 st.set_page_config(page_title="CrackFormer-II | Demo", page_icon="🧱", layout="centered")
 st.title("Segmentation Demo")
 
-# ---------- 1) Modelo ----------
-from crackformerII import crackformer  # tu archivo local
+from crackformerII import crackformer
 
 MODEL_LOCAL_PATH = "models/best_valloss.pth"
-MODEL_URL = st.secrets.get("MODEL_URL", None)
+MODEL_URL = st.secrets.get("MODEL_URL", None)   # opcional
 DEVICE = torch.device("cpu")
 
 @st.cache_resource(show_spinner=True)
 def load_model():
     os.makedirs(os.path.dirname(MODEL_LOCAL_PATH), exist_ok=True)
-    if not os.path.exists(MODEL_LOCAL_PATH) and MODEL_URL:
+
+    def is_suspect(path, min_bytes=1024*1024):
+        return (not os.path.exists(path)) or (os.path.getsize(path) < min_bytes)
+
+    # Si no hay pesos válidos y tenemos URL, descargamos
+    if is_suspect(MODEL_LOCAL_PATH) and MODEL_URL:
         st.info("Descargando pesos del modelo…")
         urllib.request.urlretrieve(MODEL_URL, MODEL_LOCAL_PATH)
 
     model = crackformer()
-    ckpt = torch.load(MODEL_LOCAL_PATH, map_location=DEVICE)
-    state = ckpt.get("model_state", ckpt)
-    model.load_state_dict(state, strict=False)
+
+    # Carga robusta con reintento
+    def try_load():
+        ckpt = torch.load(MODEL_LOCAL_PATH, map_location=DEVICE)
+        state = ckpt.get("model_state", ckpt)
+        model.load_state_dict(state, strict=False)
+
+    try:
+        try_load()
+    except Exception as e:
+        # Si el archivo es sospechoso y hay URL, re-descarga y reintenta
+        if MODEL_URL:
+            st.warning(f"No se pudieron leer los pesos ({type(e).__name__}). Reintentando con descarga…")
+            urllib.request.urlretrieve(MODEL_URL, MODEL_LOCAL_PATH)
+            try_load()
+        else:
+            # Mensaje claro para depurar
+            sz = os.path.getsize(MODEL_LOCAL_PATH) if os.path.exists(MODEL_LOCAL_PATH) else 0
+            raise RuntimeError(
+                f"No se pudo cargar '{MODEL_LOCAL_PATH}'. "
+                f"¿Archivo corrupto/subida incompleta? Tamaño actual: {sz} bytes. "
+                f"Vuelve a subirlo o configura MODEL_URL en Secrets para descargarlo."
+            ) from e
+
     model.to(DEVICE).eval()
     return model
 
 model = load_model()
 
-# ---------- 2) Utilidades ----------
 def preprocess_pil(img: Image.Image):
-    """Convierte la imagen a tensor sin cambiar tamaño."""
+    """Sin redimensionar: usa el tamaño original."""
     img = img.convert("RGB")
     orig_size = img.size  # (W,H)
     arr = np.asarray(img).astype(np.float32) / 255.0
@@ -61,7 +85,6 @@ def overlay_mask_on_image(img_pil: Image.Image, mask_uint8: np.ndarray, alpha=0.
     out = (img * (1 - alpha) + overlay * alpha).astype(np.uint8)
     return Image.fromarray(out)
 
-# ---------- 3) UI ----------
 uploaded = st.file_uploader("Sube una imagen (jpg/png)", type=["jpg", "jpeg", "png"])
 thr = st.slider("Umbral máscara", 0.0, 1.0, 0.5, 0.01)
 
