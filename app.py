@@ -7,7 +7,7 @@ import streamlit as st
 from PIL import Image
 
 # ------------------ Config UI ------------------
-st.set_page_config(page_title="CrackFormer-II | Demo", page_icon="🧱", layout="centered")
+st.set_page_config(page_title="Segmentation Demo", page_icon="🧱", layout="centered")
 st.title("Segmentation Demo")
 
 # ------------------ Modelo ------------------
@@ -101,7 +101,7 @@ uploaded_file = st.file_uploader(
 thr = st.slider("Umbral máscara", 0.0, 1.0, 0.5, 0.01)
 
 if not uploaded_file:
-    st.info("Sube una imagen para continuar.")
+    st.info("Sube una imagen para continuar")
     st.stop()
 
 # Abrimos la imagen de forma segura
